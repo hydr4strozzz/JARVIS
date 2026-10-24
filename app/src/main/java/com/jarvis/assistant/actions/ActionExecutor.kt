@@ -12,27 +12,32 @@ import android.provider.Settings
 import android.telephony.SmsManager
 import com.google.gson.JsonObject
 import com.jarvis.assistant.service.JarvisAccessibilityService
+import com.jarvis.assistant.util.JarvisLogger
 
 class ActionExecutor(private val ctx: Context) {
     fun execute(action: String, params: JsonObject?) {
-        val p = params ?: JsonObject()
-        when (action) {
-            "launch_app"   -> launchApp(p)
-            "open_url"     -> openUrl(str(p, "url"))
-            "set_volume"   -> setVolume(p.get("percent")?.asInt ?: 50)
-            "media"        -> media(str(p, "command"))
-            "call"         -> call(p)
-            "sms"          -> sms(p)
-            "open_camera"  -> openCamera()
-            "click_text"   -> JarvisAccessibilityService.get()?.clickByText(str(p, "text"))
-            "type_text"    -> JarvisAccessibilityService.get()?.typeText(str(p, "text"))
-            "scroll"       -> JarvisAccessibilityService.get()?.scroll(str(p, "direction") == "down")
-            "back"         -> JarvisAccessibilityService.get()?.back()
-            "home"         -> JarvisAccessibilityService.get()?.home()
-            "recents"      -> JarvisAccessibilityService.get()?.recents()
-            "flashlight"   -> flashlight(p.get("on")?.asBoolean ?: true)
-            "toggle_data"  -> toggleData()
-            "toggle_hotspot" -> toggleHotspot()
+        try {
+            val p = params ?: JsonObject()
+            when (action) {
+                "launch_app"   -> launchApp(p)
+                "open_url"     -> openUrl(str(p, "url"))
+                "set_volume"   -> setVolume(p.get("percent")?.asInt ?: 50)
+                "media"        -> media(str(p, "command"))
+                "call"         -> call(p)
+                "sms"          -> sms(p)
+                "open_camera"  -> openCamera()
+                "click_text"   -> JarvisAccessibilityService.get()?.clickByText(str(p, "text"))
+                "type_text"    -> JarvisAccessibilityService.get()?.typeText(str(p, "text"))
+                "scroll"       -> JarvisAccessibilityService.get()?.scroll(str(p, "direction") == "down")
+                "back"         -> JarvisAccessibilityService.get()?.back()
+                "home"         -> JarvisAccessibilityService.get()?.home()
+                "recents"      -> JarvisAccessibilityService.get()?.recents()
+                "flashlight"   -> flashlight(p.get("on")?.asBoolean ?: true)
+                "toggle_data"  -> toggleData()
+                "toggle_hotspot" -> toggleHotspot()
+            }
+        } catch (e: Exception) {
+            JarvisLogger.log("Action Error: ${e.message}")
         }
     }
 

@@ -46,15 +46,24 @@ class MainActivity : AppCompatActivity() {
         b.btnSettings.setOnClickListener { showSettingsDialog() }
         b.btnPerms.setOnClickListener { requestPerms() }
         b.btnAccessibility.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        
         b.btnBattery.setOnClickListener {
-            val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            i.data = Uri.parse("package:$packageName")
-            startActivity(i)
+            // Changed from Battery to Overlay to prevent crash
+            if (!Settings.canDrawOverlays(this)) {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                startActivity(intent)
+            } else {
+                JarvisLogger.log("Overlay already granted!")
+            }
         }
 
         b.orb.setOnClickListener {
             val i = Intent(this, JarvisForegroundService::class.java)
             if (!isRunning) {
+                if (!Settings.canDrawOverlays(this)) {
+                    JarvisLogger.log("Grant Overlay permission first!")
+                    return@setOnClickListener
+                }
                 i.action = JarvisForegroundService.ACTION_START
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
                 isRunning = true
@@ -101,7 +110,7 @@ class MainActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("JARVIS Settings")
-            .setMessage("Paste your keys. If empty, app uses built-in keys.\n\nFeatures: App Control, Calls, SMS, Camera, Data/Hotspot.")
+            .setMessage("Paste your keys.")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
                 Prefs.setGroqKey(this, etGroq.text.toString().trim())
