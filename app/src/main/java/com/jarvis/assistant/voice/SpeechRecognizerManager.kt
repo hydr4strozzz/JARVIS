@@ -22,12 +22,18 @@ class SpeechRecognizerManager(
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onError(error: Int) {
-            if (running) onError(error)
+            if (running) {
+                running = false
+                onError(error)
+            }
         }
         override fun onResults(results: Bundle?) {
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull() ?: ""
-            if (running && text.isNotBlank()) onResult(text)
+            if (running) {
+                running = false
+                if (text.isNotBlank()) onResult(text) else onError(0)
+            }
         }
         override fun onPartialResults(partialResults: Bundle?) {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -36,10 +42,10 @@ class SpeechRecognizerManager(
     fun start() {
         if (running) return
         running = true
-        if (recognizer == null) {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
-                setRecognitionListener(listener)
-            }
+        // Android mic bugs ozhivakkan recognizer recreate cheyyunnu
+        recognizer?.destroy()
+        recognizer = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
+            setRecognitionListener(listener)
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -47,11 +53,6 @@ class SpeechRecognizerManager(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "auto")
         }
         recognizer?.startListening(intent)
-    }
-
-    fun stop() {
-        running = false
-        recognizer?.stopListening()
     }
 
     fun destroy() {

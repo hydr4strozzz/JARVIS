@@ -37,11 +37,15 @@ Available actions and their params:
 - "recents"        {}
 - "read_screen"    {}
 - "flashlight"     {"on":true|false}
+- "open_camera"  {}
+- "toggle_data"  {}
+- "toggle_hotspot" {}
 - "none"           null
 
 Rules:
 - If user asks a question → action "none", just answer in "speak".
 - If user asks to do something on the phone → pick the correct action.
+- For "data on/off" use "toggle_data". For "hotspot on/off" use "toggle_hotspot".
 - Keep "speak" short and natural in the user's language.
 """
 

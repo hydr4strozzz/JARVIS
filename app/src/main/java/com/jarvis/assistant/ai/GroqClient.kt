@@ -37,6 +37,9 @@ Actions and params:
 - "recents" {}
 - "read_screen" {}
 - "flashlight" {"on":true|false}
+- "open_camera"  {}
+- "toggle_data"  {}
+- "toggle_hotspot" {}
 - "none" null
 """
 

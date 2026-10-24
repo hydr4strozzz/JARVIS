@@ -7,6 +7,8 @@ import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
+import android.provider.Settings
 import android.telephony.SmsManager
 import com.google.gson.JsonObject
 import com.jarvis.assistant.service.JarvisAccessibilityService
@@ -22,6 +24,7 @@ class ActionExecutor(private val ctx: Context) {
             "media"        -> media(str(p, "command"))
             "call"         -> call(p)
             "sms"          -> sms(p)
+            "open_camera"  -> openCamera()
             "click_text"   -> JarvisAccessibilityService.get()?.clickByText(str(p, "text"))
             "type_text"    -> JarvisAccessibilityService.get()?.typeText(str(p, "text"))
             "scroll"       -> JarvisAccessibilityService.get()
@@ -30,6 +33,8 @@ class ActionExecutor(private val ctx: Context) {
             "home"         -> JarvisAccessibilityService.get()?.home()
             "recents"      -> JarvisAccessibilityService.get()?.recents()
             "flashlight"   -> flashlight(p.get("on")?.asBoolean ?: true)
+            "toggle_data"  -> toggleData()
+            "toggle_hotspot" -> toggleHotspot()
         }
     }
 
@@ -62,6 +67,12 @@ class ActionExecutor(private val ctx: Context) {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    private fun openCamera() {
+        val i = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i)
+    }
+
     private fun setVolume(percent: Int) {
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -85,7 +96,7 @@ class ActionExecutor(private val ctx: Context) {
         val number = str(p, "number")
         val contact = str(p, "contact")
         val target = if (number.isNotBlank()) number else resolveContact(contact) ?: return
-        ctx.startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:\$target"))
+        ctx.startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:$target"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -118,5 +129,23 @@ class ActionExecutor(private val ctx: Context) {
         val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val id = cm.cameraIdList.firstOrNull() ?: return
         cm.setTorchMode(id, on)
+    }
+
+    private fun toggleData() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val i = Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i)
+        } else {
+            val i = Intent(Settings.ACTION_DATA_ROAMING_SETTINGS)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i)
+        }
+    }
+
+    private fun toggleHotspot() {
+        val i = Intent(Settings.ACTION_WIRELESS_SETTINGS)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i)
     }
 }

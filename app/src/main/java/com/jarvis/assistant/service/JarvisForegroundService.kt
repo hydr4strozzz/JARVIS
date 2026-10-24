@@ -44,52 +44,62 @@ class JarvisForegroundService : Service() {
     }
 
     private fun startForegroundInternal() {
-        val ni = NotificationCompat.Builder(this, JarvisApp.CHANNEL)
-            .setContentTitle("JARVIS active")
-            .setContentText("Say \"Jarvis\" to wake")
-            .setSmallIcon(R.drawable.ic_mic)
-            .setOngoing(true)
-            .build()
-        startForeground(1, ni)
+        updateNotification("Listening... say 'Hey Jarvis'")
         startListeningLoop()
     }
 
-    private fun startListeningLoop() {
-        if (!armed) saySilent("")
-        speech.start()
+    private fun updateNotification(text: String) {
+        val ni = NotificationCompat.Builder(this, JarvisApp.CHANNEL)
+            .setContentTitle("JARVIS")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_mic)
+            .setOngoing(true)
+            .build()
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        mgr.notify(1, ni)
+        startForeground(1, ni)
     }
 
-    private fun saySilent(_s: String) { }
+    private fun startListeningLoop() {
+        if (!armed) updateNotification("Listening... say 'Hey Jarvis'")
+        speech.start()
+    }
 
     private fun onSpeechResult(text: String) {
         val clean = text.trim().lowercase()
         if (busy) return
 
         if (!armed) {
+            // "hey jarvis" or "jarvis" wake word
             if (clean.contains("jarvis")) {
                 armed = true
                 tts.speak("Yes?")
-                restartListening(afterMs = 200)
+                updateNotification("Listening for command...")
+                restartListening(afterMs = 500)
             } else {
-                restartListening(afterMs = 200)
+                restartListening(afterMs = 300)
             }
             return
         }
 
         busy = true
         armed = false
+        updateNotification("Thinking...")
         scope.launch {
             try {
                 val reply = withContext(Dispatchers.IO) {
                     router.handle(text)
                 }
-                if (reply.speak.isNotBlank()) tts.speak(reply.speak)
+                if (reply.speak.isNotBlank()) {
+                    updateNotification("Speaking: ${reply.speak}")
+                    tts.speak(reply.speak)
+                }
                 reply.action?.let { executor.execute(it, reply.params) }
             } catch (e: Exception) {
                 tts.speak("Something went wrong.")
             } finally {
                 busy = false
-                restartListening(afterMs = 800)
+                restartListening(afterMs = 1000)
             }
         }
     }
@@ -97,12 +107,12 @@ class JarvisForegroundService : Service() {
     private fun restartListening(afterMs: Long = 400) {
         scope.launch {
             delay(afterMs)
-            speech.start()
+            if (!busy) speech.start()
         }
     }
 
     private fun restartLater() {
-        scope.launch { delay(800); speech.start() }
+        scope.launch { delay(1000); if (!busy) speech.start() }
     }
 
     private fun acquireWakeLock() {
