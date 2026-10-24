@@ -62,7 +62,7 @@ Rules:
                 put("responseMimeType", "application/json")
             })
         }
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\${BuildConfig.GEMINI_API_KEY}"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
         val req = Request.Builder()
             .url(url)
             .post(body.toString().toRequestBody("application/json".toMediaType()))

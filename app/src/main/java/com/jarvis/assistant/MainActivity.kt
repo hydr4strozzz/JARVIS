@@ -26,7 +26,7 @@ class MainActivity : AppCompatActivity() {
         }
         b.btnBattery.setOnClickListener {
             val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            i.data = Uri.parse("package:\$packageName")
+            i.data = Uri.parse("package:$packageName")
             startActivity(i)
         }
         b.btnStart.setOnClickListener {

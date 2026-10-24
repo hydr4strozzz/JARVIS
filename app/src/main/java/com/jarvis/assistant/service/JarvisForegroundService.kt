@@ -80,7 +80,9 @@ class JarvisForegroundService : Service() {
         armed = false
         scope.launch {
             try {
-                val reply = router.handle(text)
+                val reply = withContext(Dispatchers.IO) {
+                    router.handle(text)
+                }
                 if (reply.speak.isNotBlank()) tts.speak(reply.speak)
                 reply.action?.let { executor.execute(it, reply.params) }
             } catch (e: Exception) {

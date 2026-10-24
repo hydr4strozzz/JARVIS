@@ -53,7 +53,7 @@ Actions and params:
         }
         val req = Request.Builder()
             .url("https://api.groq.com/openai/v1/chat/completions")
-            .header("Authorization", "Bearer \${BuildConfig.GROQ_API_KEY}")
+            .header("Authorization", "Bearer ${BuildConfig.GROQ_API_KEY}")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(req).execute().use { resp ->
