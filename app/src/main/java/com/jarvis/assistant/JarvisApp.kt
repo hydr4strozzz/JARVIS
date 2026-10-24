@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import com.jarvis.assistant.util.JarvisLogger
 
 class JarvisApp : Application() {
     override fun onCreate() {
@@ -14,6 +15,13 @@ class JarvisApp : Application() {
             mgr.createNotificationChannel(
                 NotificationChannel(CHANNEL, "JARVIS", NotificationManager.IMPORTANCE_LOW)
             )
+        }
+        
+        // Catch crashes and show them instead of closing the app
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            JarvisLogger.log("CRASH: ${throwable.localizedMessage}")
+            defaultHandler?.uncaughtException(thread, throwable)
         }
     }
     companion object { const val CHANNEL = "jarvis_channel" }

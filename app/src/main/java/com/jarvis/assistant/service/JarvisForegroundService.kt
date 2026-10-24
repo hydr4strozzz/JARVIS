@@ -33,10 +33,18 @@ class JarvisForegroundService : Service() {
         speech = SpeechRecognizerManager(this,
             onResult = ::onSpeechResult,
             onError = { err -> 
-                if (err == android.speech.SpeechRecognizer.ERROR_NO_MATCH || err == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                    if (!busy && !armed) restartListening(300)
-                } else {
-                    if (!busy && !armed) restartListening(1000)
+                // If it times out or no match, reset armed state and restart
+                if (armed && (err == android.speech.SpeechRecognizer.ERROR_NO_MATCH || err == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
+                    armed = false
+                    JarvisLogger.log("Command timeout. Say 'Hey Jarvis'")
+                }
+                
+                if (!busy) {
+                    if (err == android.speech.SpeechRecognizer.ERROR_NO_MATCH || err == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        restartListening(300)
+                    } else {
+                        restartListening(1000)
+                    }
                 }
             })
         acquireWakeLock()
@@ -75,9 +83,8 @@ class JarvisForegroundService : Service() {
                 speech.stop()
                 tts.speak("Ah huh")
                 scope.launch { 
-                    delay(1200) // Wait for TTS to finish saying 'Ah huh'
+                    delay(1200) // Wait for TTS
                     busy = false
-                    armed = true // Now ready for command
                     JarvisLogger.log("Awaiting command...")
                     speech.start() 
                 }
@@ -99,7 +106,7 @@ class JarvisForegroundService : Service() {
                 if (reply.speak.isNotBlank()) {
                     tts.speak(reply.speak)
                     JarvisLogger.log("Reply: ${reply.speak}")
-                    delay(2000) // Wait for long reply TTS to finish
+                    delay(2000) // Wait for speech
                 }
             } catch (e: Exception) {
                 tts.speak("Error.")
@@ -115,7 +122,7 @@ class JarvisForegroundService : Service() {
     private fun restartListening(afterMs: Long) {
         scope.launch {
             delay(afterMs)
-            if (!busy && !armed) speech.start()
+            if (!busy) speech.start()
         }
     }
 

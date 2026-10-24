@@ -8,6 +8,7 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import com.jarvis.assistant.util.JarvisLogger
 
 class SpeechRecognizerManager(
     private val ctx: Context,
@@ -16,6 +17,7 @@ class SpeechRecognizerManager(
 ) {
     private var recognizer: SpeechRecognizer? = null
     private var isListening = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) { isListening = true }
@@ -26,9 +28,6 @@ class SpeechRecognizerManager(
         
         override fun onError(error: Int) {
             isListening = false
-            if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                destroy() 
-            }
             onError(error)
         }
         
@@ -43,13 +42,16 @@ class SpeechRecognizerManager(
     }
 
     fun start() {
-        if (isListening) return
-        
-        Handler(Looper.getMainLooper()).post {
-            if (recognizer == null) {
-                recognizer = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
-                    setRecognitionListener(listener)
-                }
+        mainHandler.post {
+            if (isListening) return@post
+            
+            // Always destroy old one to prevent native crashes
+            try {
+                recognizer?.destroy()
+            } catch (e: Exception) {}
+            
+            recognizer = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
+                setRecognitionListener(listener)
             }
             
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -63,23 +65,22 @@ class SpeechRecognizerManager(
                 isListening = true
             } catch (e: Exception) {
                 isListening = false
-                destroy()
                 onError(-1)
             }
         }
     }
 
     fun stop() {
-        if (!isListening) return
-        isListening = false
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
+            if (!isListening) return@post
+            isListening = false
             try { recognizer?.stopListening() } catch (e: Exception) {}
         }
     }
 
     fun destroy() {
-        isListening = false
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
+            isListening = false
             try { recognizer?.destroy() } catch (e: Exception) {}
             recognizer = null
         }
