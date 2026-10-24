@@ -10,13 +10,13 @@ import com.jarvis.assistant.R
 import com.jarvis.assistant.actions.ActionExecutor
 import com.jarvis.assistant.ai.LlmRouter
 import com.jarvis.assistant.util.JarvisLogger
-import com.jarvis.assistant.voice.SpeechRecognizerManager
+import com.jarvis.assistant.voice.AudioRecorderManager
 import com.jarvis.assistant.voice.TtsManager
 import kotlinx.coroutines.*
 
 class JarvisForegroundService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private lateinit var speech: SpeechRecognizerManager
+    private lateinit var recorder: AudioRecorderManager
     private lateinit var tts: TtsManager
     private lateinit var router: LlmRouter
     private lateinit var executor: ActionExecutor
@@ -29,24 +29,7 @@ class JarvisForegroundService : Service() {
         tts = TtsManager(this)
         router = LlmRouter(this)
         executor = ActionExecutor(this)
-        
-        speech = SpeechRecognizerManager(this,
-            onResult = ::onSpeechResult,
-            onError = { err -> 
-                // If it times out or no match, reset armed state and restart
-                if (armed && (err == android.speech.SpeechRecognizer.ERROR_NO_MATCH || err == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
-                    armed = false
-                    JarvisLogger.log("Command timeout. Say 'Hey Jarvis'")
-                }
-                
-                if (!busy) {
-                    if (err == android.speech.SpeechRecognizer.ERROR_NO_MATCH || err == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                        restartListening(300)
-                    } else {
-                        restartListening(1000)
-                    }
-                }
-            })
+        recorder = AudioRecorderManager(this) { text -> onSpeechResult(text) }
         acquireWakeLock()
     }
 
@@ -59,9 +42,9 @@ class JarvisForegroundService : Service() {
     }
 
     private fun startForegroundInternal() {
-        updateNotification("Listening... say 'Hey Jarvis'")
+        updateNotification("Listening...")
         JarvisLogger.log("JARVIS Active. Say 'Hey Jarvis'")
-        speech.start()
+        recorder.start()
     }
 
     private fun updateNotification(text: String) {
@@ -80,23 +63,22 @@ class JarvisForegroundService : Service() {
         if (!armed) {
             if (clean.contains("jarvis") || clean.contains("jervis")) {
                 armed = true
-                speech.stop()
+                recorder.muteMic()
                 tts.speak("Ah huh")
                 scope.launch { 
-                    delay(1200) // Wait for TTS
+                    delay(1200) 
                     busy = false
+                    armed = true
                     JarvisLogger.log("Awaiting command...")
-                    speech.start() 
+                    recorder.unmuteMic()
                 }
-            } else {
-                restartListening(300)
             }
             return
         }
 
         busy = true
         armed = false
-        speech.stop()
+        recorder.muteMic()
         JarvisLogger.log("Thinking...")
         
         scope.launch {
@@ -106,7 +88,7 @@ class JarvisForegroundService : Service() {
                 if (reply.speak.isNotBlank()) {
                     tts.speak(reply.speak)
                     JarvisLogger.log("Reply: ${reply.speak}")
-                    delay(2000) // Wait for speech
+                    delay(2000)
                 }
             } catch (e: Exception) {
                 tts.speak("Error.")
@@ -114,15 +96,8 @@ class JarvisForegroundService : Service() {
                 delay(1000)
             } finally {
                 busy = false
-                speech.start()
+                recorder.unmuteMic()
             }
-        }
-    }
-
-    private fun restartListening(afterMs: Long) {
-        scope.launch {
-            delay(afterMs)
-            if (!busy) speech.start()
         }
     }
 
@@ -133,7 +108,7 @@ class JarvisForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        scope.cancel(); speech.destroy(); tts.shutdown()
+        scope.cancel(); recorder.stop(); tts.shutdown()
         wakeLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
     }
