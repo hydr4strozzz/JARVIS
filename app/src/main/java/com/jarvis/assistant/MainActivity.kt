@@ -10,18 +10,41 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import com.jarvis.assistant.service.JarvisForegroundService
+import androidx.lifecycle.lifecycleScope
+import com.jarvis.assistant.ai.LlmRouter
+import com.jarvis.assistant.actions.ActionExecutor
 import com.jarvis.assistant.databinding.ActivityMainBinding
+import com.jarvis.assistant.service.JarvisForegroundService
+import com.jarvis.assistant.util.JarvisLogger
+import com.jarvis.assistant.voice.TtsManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
     private var isRunning = false
+    private val router = LlmRouter()
+    private val executor by lazy { ActionExecutor(this) }
+    private val tts by lazy { TtsManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
+
+        // Check API Keys
+        val groqKey = BuildConfig.GROQ_API_KEY
+        if (groqKey.isBlank() || groqKey.length < 10) {
+            JarvisLogger.log("ERROR: GROQ API KEY IS MISSING IN BUILD.\nDid you add secrets and re-build?")
+        }
+
+        lifecycleScope.launch {
+            JarvisLogger.statusFlow.collect { status ->
+                b.statusText.text = status
+            }
+        }
 
         b.btnPerms.setOnClickListener { requestPerms() }
         b.btnAccessibility.setOnClickListener {
@@ -39,17 +62,38 @@ class MainActivity : AppCompatActivity() {
                 i.action = JarvisForegroundService.ACTION_START
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                     startForegroundService(i) else startService(i)
-                b.status.text = "Listening... say 'Hey Jarvis'"
                 isRunning = true
                 startPulse()
             } else {
                 i.action = JarvisForegroundService.ACTION_STOP
                 startService(i)
-                b.status.text = "Tap orb to start"
                 isRunning = false
                 b.orb.animate().cancel()
                 b.orb.scaleX = 1f
                 b.orb.scaleY = 1f
+                JarvisLogger.log("Stopped")
+            }
+        }
+
+        b.btnTest.setOnClickListener {
+            val text = b.editCommand.text.toString().trim()
+            if (text.isNotEmpty()) {
+                b.editCommand.setText("")
+                JarvisLogger.log("Testing: $text")
+                lifecycleScope.launch {
+                    try {
+                        val reply = withContext(Dispatchers.IO) { router.handle(text) }
+                        reply.action?.let { executor.execute(it, reply.params) }
+                        if (reply.speak.isNotBlank()) {
+                            tts.speak(reply.speak)
+                            JarvisLogger.log("SUCCESS:\nAction: ${reply.action}\nSpeak: ${reply.speak}")
+                        } else {
+                            JarvisLogger.log("SUCCESS but no speak text.\nAction: ${reply.action}")
+                        }
+                    } catch (e: Exception) {
+                        JarvisLogger.log("API ERROR: ${e.message}")
+                    }
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ import com.jarvis.assistant.JarvisApp
 import com.jarvis.assistant.R
 import com.jarvis.assistant.actions.ActionExecutor
 import com.jarvis.assistant.ai.LlmRouter
+import com.jarvis.assistant.util.JarvisLogger
 import com.jarvis.assistant.voice.SpeechRecognizerManager
 import com.jarvis.assistant.voice.TtsManager
 import kotlinx.coroutines.*
@@ -32,8 +33,9 @@ class JarvisForegroundService : Service() {
         speech = SpeechRecognizerManager(this,
             onResult = ::onSpeechResult,
             onError = { err -> 
-                if (err == 7 || err == 6) restartListening(500)
-                else restartListening(1500)
+                JarvisLogger.log("Mic Error: $err")
+                if (err == 7 || err == 6) restartListening(500) // NO_MATCH or TIMEOUT
+                else restartListening(2000) // BUSY or NETWORK
             })
         acquireWakeLock()
     }
@@ -47,7 +49,8 @@ class JarvisForegroundService : Service() {
     }
 
     private fun startForegroundInternal() {
-        updateNotification("Listening... say 'Hey Jarvis'")
+        updateNotification("Listening...")
+        JarvisLogger.log("Started. Say 'Hey Jarvis'")
         startListeningLoop()
     }
 
@@ -64,7 +67,6 @@ class JarvisForegroundService : Service() {
     }
 
     private fun startListeningLoop() {
-        if (!armed) updateNotification("Listening... say 'Hey Jarvis'")
         speech.start()
     }
 
@@ -72,13 +74,13 @@ class JarvisForegroundService : Service() {
         val clean = text.trim().lowercase()
         if (busy) return
 
-        updateNotification("Heard: $text")
+        JarvisLogger.log("Heard: $text")
 
         if (!armed) {
             if (clean.contains("jarvis")) {
                 armed = true
                 tts.speak("Yes?")
-                updateNotification("Listening for command...")
+                JarvisLogger.log("Awaiting command...")
                 restartListening(afterMs = 1000)
             } else {
                 restartListening(afterMs = 300)
@@ -88,23 +90,24 @@ class JarvisForegroundService : Service() {
 
         busy = true
         armed = false
-        updateNotification("Thinking...")
+        JarvisLogger.log("Thinking...")
         scope.launch {
             try {
                 val reply = withContext(Dispatchers.IO) {
                     router.handle(text)
                 }
                 
-                // ACTION FIRST (INSTANT EXECUTION)
                 reply.action?.let { executor.execute(it, reply.params) }
                 
-                // THEN SPEAK
                 if (reply.speak.isNotBlank()) {
-                    updateNotification("Speaking: ${reply.speak}")
                     tts.speak(reply.speak)
+                    JarvisLogger.log("Reply: ${reply.speak}\nAction: ${reply.action}")
+                } else {
+                    JarvisLogger.log("Action done: ${reply.action} (No speak text)")
                 }
             } catch (e: Exception) {
                 tts.speak("Error.")
+                JarvisLogger.log("ERROR: ${e.message}")
             } finally {
                 busy = false
                 restartListening(afterMs = 1000)
