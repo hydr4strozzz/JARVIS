@@ -47,10 +47,9 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
             
             val buffer = ShortArray(bufferSize)
             var silenceFrames = 0
-            val maxSilenceFrames = 5 // ~0.8 seconds
+            val maxSilenceFrames = 5 
             var speechFrames = 0
             val audioBuffer = java.io.ByteArrayOutputStream()
-            var debugCounter = 0
 
             while (isRecording) {
                 val read = audioRecord.read(buffer, 0, bufferSize)
@@ -59,11 +58,6 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                     for (i in 0 until read) sum += buffer[i] * buffer[i]
                     val rms = kotlin.math.sqrt(sum / read)
                     val isSpeech = rms > 150.0 
-
-                    if (debugCounter % 10 == 0) {
-                        withContext(Dispatchers.Main) { JarvisLogger.log("Mic Level: ${rms.toInt()}") }
-                    }
-                    debugCounter++
 
                     if (isSpeech) {
                         speechFrames++
@@ -87,10 +81,9 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                         speechFrames = 0
                         silenceFrames = 0
                         
-                        // FIX FOR 400 ERROR: Only send if audio is longer than 0.5 seconds
                         if (pcmData.size > 16000) {
                             val tempFile = File.createTempFile("audio", ".wav", ctx.cacheDir)
-                            writeWavFileWithData(tempFile, pcmData)
+                            writeProperWavFile(tempFile, pcmData)
                             
                             withContext(Dispatchers.Main) { JarvisLogger.log("Transcribing...") }
                             val text = transcribe(tempFile)
@@ -99,8 +92,6 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                             if (!text.isNullOrBlank()) {
                                 withContext(Dispatchers.Main) { onTextResult(text) }
                             }
-                        } else {
-                            withContext(Dispatchers.Main) { JarvisLogger.log("Audio too short, ignoring.") }
                         }
                     } else if (silenceFrames > maxSilenceFrames) {
                         audioBuffer.reset()
@@ -146,26 +137,52 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
         }
     }
 
-    private fun writeWavFileWithData(file: File, pcmData: ByteArray) {
+    // PROPER WAV HEADER GENERATION
+    private fun writeProperWavFile(file: File, pcmData: ByteArray) {
         val out = FileOutputStream(file)
         val dataLen = pcmData.size
-        val header = ByteArray(44)
-        val totalLen = dataLen + 36
+        val totalDataLen = dataLen + 36
+        val channels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * channels * bitsPerSample / 8
+        val blockAlign = channels * bitsPerSample / 8
 
-        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
-        header[4] = (totalLen and 0xff).toByte(); header[5] = ((totalLen shr 8) and 0xff).toByte(); header[6] = ((totalLen shr 16) and 0xff).toByte(); header[7] = ((totalLen shr 24) and 0xff).toByte()
-        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
-        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
-        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0
-        header[20] = 1; header[21] = 0; header[22] = 1; header[23] = 0
-        header[24] = (sampleRate and 0xff).toByte(); header[25] = ((sampleRate shr 8) and 0xff).toByte(); header[26] = ((sampleRate shr 16) and 0xff).toByte(); header[27] = ((sampleRate shr 24) and 0xff).toByte()
-        header[28] = (sampleRate * 2 and 0xff).toByte(); header[29] = ((sampleRate * 2 shr 8) and 0xff).toByte(); header[30] = 2; header[31] = 0; header[32] = 16; header[33] = 0
-        header[34] = 'd'.code.toByte(); header[35] = 'a'.code.toByte(); header[36] = 't'.code.toByte(); header[37] = 'a'.code.toByte()
-        header[38] = (dataLen and 0xff).toByte(); header[39] = ((dataLen shr 8) and 0xff).toByte(); header[40] = ((dataLen shr 16) and 0xff).toByte(); header[41] = ((dataLen shr 24) and 0xff).toByte()
-
-        out.write(header)
+        out.write("RIFF".toByteArray(Charsets.US_ASCII))
+        out.write(intToByteArray(totalDataLen), 0, 4)
+        out.write("WAVE".toByteArray(Charsets.US_ASCII))
+        
+        out.write("fmt ".toByteArray(Charsets.US_ASCII))
+        out.write(intToByteArray(16), 0, 4) // Subchunk1Size
+        out.write(shortToByteArray(1), 0, 2) // AudioFormat (PCM)
+        out.write(shortToByteArray(channels.toShort()), 0, 2)
+        out.write(intToByteArray(sampleRate), 0, 4)
+        out.write(intToByteArray(byteRate), 0, 4)
+        out.write(shortToByteArray(blockAlign.toShort()), 0, 2)
+        out.write(shortToByteArray(bitsPerSample.toShort()), 0, 2)
+        
+        out.write("data".toByteArray(Charsets.US_ASCII))
+        out.write(intToByteArray(dataLen), 0, 4)
+        
         out.write(pcmData)
+        out.flush()
         out.close()
     }
+
+    private fun intToByteArray(value: Int): ByteArray {
+        return byteArrayOf(
+            (value and 0xff).toByte(),
+            ((value shr 8) and 0xff).toByte(),
+            ((value shr 16) and 0xff).toByte(),
+            ((value shr 24) and 0xff).toByte()
+        )
+    }
+
+    private fun shortToByteArray(value: Short): ByteArray {
+        return byteArrayOf(
+            (value.toInt() and 0xff).toByte(),
+            ((value.toInt() shr 8) and 0xff).toByte()
+        )
+    }
+
     fun stop() { isRecording = false; job?.cancel() }
 }
