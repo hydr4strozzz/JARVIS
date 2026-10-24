@@ -14,16 +14,14 @@ object GeminiClient {
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
 
     private const val SYSTEM_PROMPT = """
-You are JARVIS, a highly capable Android AI assistant with full physical phone control.
-You are NOT a standard AI, you are JARVIS with a mic, camera, and screen.
-NEVER say "As an AI", "I am a language model", or "I don't have ears". 
-LANGUAGE RULE: You understand Malayalam, Manglish (Malayalam in English letters), and English. ALWAYS reply in the EXACT language the user used. If they speak Manglish, reply in Manglish. If Malayalam, reply in Malayalam.
+You are JARVIS, a highly capable Android AI assistant.
+NEVER say "As an AI". You have full control.
+LANGUAGE RULE: You understand Malayalam, Manglish, and English. Reply in the EXACT same language the user used.
 
 Respond ONLY with valid JSON.
-
 Schema: {"speak":"<reply>","action":"<action>","params":{...}}
 
-ACTIONS YOU CAN DO:
+ACTIONS:
 - "launch_app"    {"app_name":"<name>"}
 - "click_text"    {"text":"<text>"}
 - "type_text"     {"text":"<text>"}
@@ -60,7 +58,7 @@ ACTIONS YOU CAN DO:
                 put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT)))
             })
             put("generationConfig", JSONObject().apply {
-                put("temperature", 0.2)
+                put("temperature", 0.1)
                 put("maxOutputTokens", 300)
                 put("responseMimeType", "application/json")
             })

@@ -22,13 +22,13 @@ Respond ONLY with valid JSON.
 Schema: {"speak":"<reply>","action":"<action>","params":{...}}
 
 ACTIONS:
-- "launch_app"    {"app_name":"<name>"}   (Must use for open, thurakku, vekku)
-- "click_text"    {"text":"<text>"}       (Click any visible button)
-- "type_text"     {"text":"<text>"}       (Type text)
-- "scroll"        {"direction":"down"}    (Scroll)
-- "back"          {}                      
-- "home"          {}                      
-- "recents"       {}                      
+- "launch_app"    {"app_name":"<name>"}
+- "click_text"    {"text":"<text>"}
+- "type_text"     {"text":"<text>"}
+- "scroll"        {"direction":"down"}
+- "back"          {}
+- "home"          {}
+- "recents"       {}
 - "open_url"      {"url":"..."}
 - "set_volume"    {"percent":0-100}
 - "media"         {"command":"play"|"pause"|"next"|"prev"}

@@ -33,11 +33,10 @@ class JarvisForegroundService : Service() {
         speech = SpeechRecognizerManager(this,
             onResult = ::onSpeechResult,
             onError = { err -> 
-                // Instantly restart listening on timeout/no-match for Siri-like continuous flow
-                if (err == 7 || err == 6 || err == 11 || err == 12) {
-                    restartListening(100)
+                if (err == android.speech.SpeechRecognizer.ERROR_NO_MATCH || err == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    if (!busy && !armed) restartListening(300)
                 } else {
-                    restartListening(500)
+                    if (!busy && !armed) restartListening(1000)
                 }
             })
         acquireWakeLock()
@@ -73,12 +72,17 @@ class JarvisForegroundService : Service() {
         if (!armed) {
             if (clean.contains("jarvis") || clean.contains("jervis")) {
                 armed = true
-                speech.stop() // Stop listening while TTS speaks to avoid feedback
+                speech.stop()
                 tts.speak("Ah huh")
-                // Wait for TTS to finish then listen for command
-                scope.launch { delay(1000); busy = false; JarvisLogger.log("Awaiting command..."); speech.start() }
+                scope.launch { 
+                    delay(1200) // Wait for TTS to finish saying 'Ah huh'
+                    busy = false
+                    armed = true // Now ready for command
+                    JarvisLogger.log("Awaiting command...")
+                    speech.start() 
+                }
             } else {
-                restartListening(100)
+                restartListening(300)
             }
             return
         }
@@ -95,7 +99,7 @@ class JarvisForegroundService : Service() {
                 if (reply.speak.isNotBlank()) {
                     tts.speak(reply.speak)
                     JarvisLogger.log("Reply: ${reply.speak}")
-                    delay(1500) // Wait for speech
+                    delay(2000) // Wait for long reply TTS to finish
                 }
             } catch (e: Exception) {
                 tts.speak("Error.")

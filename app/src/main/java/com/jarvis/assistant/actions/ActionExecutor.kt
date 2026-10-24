@@ -43,32 +43,16 @@ class ActionExecutor(private val ctx: Context) {
         val explicit = str(p, "package")
         val pm = ctx.packageManager
 
-        // 1. Try explicit package
         if (explicit.isNotBlank()) {
             pm.getLaunchIntentForPackage(explicit)?.let { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(it); return }
         }
-
         if (name.isNotBlank()) {
-            // 2. Try getInstalledApplications
             val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             val match = apps.firstOrNull { 
                 pm.getApplicationLabel(it).toString().lowercase().contains(name) || 
                 it.packageName.lowercase().contains(name)
             }
-            match?.let { 
-                pm.getLaunchIntentForPackage(it.packageName)?.let { i -> i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(i); return } 
-            }
-
-            // 3. Try queryIntentActivities (Launcher apps only)
-            val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
-            val resolveInfos = pm.queryIntentActivities(intent, 0)
-            val resolveMatch = resolveInfos.firstOrNull { 
-                it.loadLabel(pm).toString().lowercase().contains(name) || 
-                it.activityInfo.packageName.lowercase().contains(name)
-            }
-            resolveMatch?.let {
-                pm.getLaunchIntentForPackage(it.activityInfo.packageName)?.let { i -> i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(i); return }
-            }
+            match?.let { pm.getLaunchIntentForPackage(it.packageName)?.let { i -> i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(i); return } }
         }
     }
 
