@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     
-    <!-- QUERY_ALL_PACKAGES allows the app to see and launch other installed apps -->
+    <!-- QUERY_ALL_PACKAGES allows opening other apps -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" 
         tools:ignore="QueryAllPackagesPermission"/>
 

@@ -45,9 +45,7 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                 return@launch
             }
             
-            withContext(Dispatchers.Main) { JarvisLogger.log("Mic active. Speak now...") }
             val buffer = ShortArray(bufferSize)
-            
             var silenceFrames = 0
             val maxSilenceFrames = 5 // ~0.8 seconds
             var speechFrames = 0
@@ -60,11 +58,9 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                     var sum = 0.0
                     for (i in 0 until read) sum += buffer[i] * buffer[i]
                     val rms = kotlin.math.sqrt(sum / read)
-                    
-                    // Threshold lowered to 150 for normal mic
                     val isSpeech = rms > 150.0 
 
-                    if (debugCounter % 20 == 0) {
+                    if (debugCounter % 10 == 0) {
                         withContext(Dispatchers.Main) { JarvisLogger.log("Mic Level: ${rms.toInt()}") }
                     }
                     debugCounter++
@@ -85,24 +81,26 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                         audioBuffer.write(byteBuffer)
                     }
 
-                    // Trigger transcription when silence is detected or max length reached
                     if ((silenceFrames > maxSilenceFrames || audioBuffer.size() > sampleRate * 2 * 6) && speechFrames > 0) {
                         val pcmData = audioBuffer.toByteArray()
                         audioBuffer.reset()
                         speechFrames = 0
                         silenceFrames = 0
                         
-                        val tempFile = File.createTempFile("audio", ".wav", ctx.cacheDir)
-                        writeWavFileWithData(tempFile, pcmData)
-                        
-                        withContext(Dispatchers.Main) { JarvisLogger.log("Transcribing...") }
-                        val text = transcribe(tempFile)
-                        tempFile.delete()
-                        
-                        if (!text.isNullOrBlank()) {
-                            withContext(Dispatchers.Main) { 
-                                onTextResult(text) 
+                        // FIX FOR 400 ERROR: Only send if audio is longer than 0.5 seconds
+                        if (pcmData.size > 16000) {
+                            val tempFile = File.createTempFile("audio", ".wav", ctx.cacheDir)
+                            writeWavFileWithData(tempFile, pcmData)
+                            
+                            withContext(Dispatchers.Main) { JarvisLogger.log("Transcribing...") }
+                            val text = transcribe(tempFile)
+                            tempFile.delete()
+                            
+                            if (!text.isNullOrBlank()) {
+                                withContext(Dispatchers.Main) { onTextResult(text) }
                             }
+                        } else {
+                            withContext(Dispatchers.Main) { JarvisLogger.log("Audio too short, ignoring.") }
                         }
                     } else if (silenceFrames > maxSilenceFrames) {
                         audioBuffer.reset()
@@ -136,7 +134,7 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
             client.newCall(request).execute().use { response ->
                 val resStr = response.body?.string() ?: return null
                 if (!response.isSuccessful) {
-                    withContext(Dispatchers.Main) { JarvisLogger.log("Whisper Err: ${response.code}") }
+                    withContext(Dispatchers.Main) { JarvisLogger.log("Whisper Err ${response.code}: $resStr") }
                     return null
                 }
                 val json = JSONObject(resStr)
