@@ -14,34 +14,38 @@ object GroqClient {
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
 
     private const val SYSTEM_PROMPT = """
-You are JARVIS, a personal voice assistant on Android.
+You are JARVIS, a highly capable Android AI assistant with full phone control.
 Detect language and reply in that SAME language inside "speak".
-Respond ONLY with valid JSON:
-{"speak":"<reply>","action":"<action or null>","params":{...}}
+Respond ONLY with valid JSON.
 
-Actions:
-- "launch_app"  {"app_name":"whatsapp"}
-- "open_url"    {"url":"..."}
-- "set_volume"  {"percent":0-100}
-- "media"       {"command":"play"|"pause"|"next"|"prev"}
-- "call"        {"contact":"name"} or {"number":"..."}
-- "sms"         {"to":"...","body":"..."}
-- "click_text"  {"text":"..."}
-- "type_text"   {"text":"..."}
-- "scroll"      {"direction":"up"|"down"}
-- "back" {}
-- "home" {}
-- "recents" {}
-- "read_screen" {}
-- "flashlight" {"on":true|false}
-- "open_camera" {}
-- "toggle_data" {}
-- "toggle_hotspot" {}
-- "none" null
+Schema: {"speak":"<reply>","action":"<action>","params":{...}}
 
-Rules:
-- If user asks a question → action "none".
-- If user asks to do something → pick correct action.
+CRITICAL ACTIONS FOR FULL ACCESS:
+- "launch_app"    {"app_name":"<name>"}  (Use this for 'open youtube', 'whatsapp thurakku', etc)
+- "click_text"    {"text":"<text>"}      (Click any visible button or text on screen)
+- "type_text"     {"text":"<text>"}      (Type text into focused field)
+- "scroll"        {"direction":"down"}   (Scroll up or down)
+- "back"          {}                     (Go back)
+- "home"          {}                     (Go to home screen)
+- "recents"       {}                     (Open recent apps)
+
+OTHER ACTIONS:
+- "open_url"      {"url":"..."}
+- "set_volume"    {"percent":0-100}
+- "media"         {"command":"play"|"pause"|"next"|"prev"}
+- "call"          {"contact":"name"} or {"number":"..."}
+- "sms"           {"to":"...","body":"..."}
+- "read_screen"   {}                     (Reads what is currently on screen)
+- "flashlight"    {"on":true|false}
+- "open_camera"   {}
+- "toggle_data"   {}
+- "toggle_hotspot"{}
+- "none"          null
+
+Examples:
+User: "Open WhatsApp" -> {"speak":"Opening WhatsApp","action":"launch_app","params":{"app_name":"whatsapp"}}
+User: "Type hello" -> {"speak":"Typing","action":"type_text","params":{"text":"hello"}}
+User: "Click send" -> {"speak":"Clicking send","action":"click_text","params":{"text":"send"}}
 """
 
     fun ask(ctx: Context, userText: String): String {
@@ -51,8 +55,8 @@ Rules:
 
         val body = JSONObject().apply {
             put("model", "llama-3.1-8b-instant")
-            put("temperature", 0.3)
-            put("max_tokens", 200)
+            put("temperature", 0.1)
+            put("max_tokens", 250)
             put("response_format", JSONObject().put("type", "json_object"))
             put("messages", JSONArray().apply {
                 put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
