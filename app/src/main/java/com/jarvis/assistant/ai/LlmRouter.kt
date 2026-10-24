@@ -5,11 +5,9 @@ import android.util.Log
 
 class LlmRouter(private val ctx: Context) {
     fun handle(userText: String): LlmReply {
-        // 1. Offline Local Check
         val localReply = LocalCommandParser.parse(userText)
         if (localReply != null) return localReply
 
-        // 2. Online API Check
         val raw = try {
             GroqClient.ask(ctx, userText)
         } catch (e: Exception) {

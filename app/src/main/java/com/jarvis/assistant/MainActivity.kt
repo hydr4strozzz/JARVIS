@@ -3,11 +3,15 @@ package com.jarvis.assistant
 import android.Manifest
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
+import android.widget.EditText
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
@@ -16,16 +20,16 @@ import com.jarvis.assistant.actions.ActionExecutor
 import com.jarvis.assistant.databinding.ActivityMainBinding
 import com.jarvis.assistant.service.JarvisForegroundService
 import com.jarvis.assistant.util.JarvisLogger
+import com.jarvis.assistant.util.Prefs
 import com.jarvis.assistant.voice.TtsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var b: ActivityMainBinding
     private var isRunning = false
-    private val router = LlmRouter()
+    private lateinit var router: LlmRouter
     private val executor by lazy { ActionExecutor(this) }
     private val tts by lazy { TtsManager(this) }
 
@@ -33,23 +37,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
-
-        // Check API Keys
-        val groqKey = BuildConfig.GROQ_API_KEY
-        if (groqKey.isBlank() || groqKey.length < 10) {
-            JarvisLogger.log("ERROR: GROQ API KEY IS MISSING IN BUILD.\nDid you add secrets and re-build?")
-        }
+        router = LlmRouter(this)
 
         lifecycleScope.launch {
-            JarvisLogger.statusFlow.collect { status ->
-                b.statusText.text = status
-            }
+            JarvisLogger.statusFlow.collect { status -> b.statusText.text = status }
         }
 
+        b.btnSettings.setOnClickListener { showSettingsDialog() }
         b.btnPerms.setOnClickListener { requestPerms() }
-        b.btnAccessibility.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
+        b.btnAccessibility.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         b.btnBattery.setOnClickListener {
             val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
             i.data = Uri.parse("package:$packageName")
@@ -60,8 +56,7 @@ class MainActivity : AppCompatActivity() {
             val i = Intent(this, JarvisForegroundService::class.java)
             if (!isRunning) {
                 i.action = JarvisForegroundService.ACTION_START
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    startForegroundService(i) else startService(i)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
                 isRunning = true
                 startPulse()
             } else {
@@ -69,8 +64,7 @@ class MainActivity : AppCompatActivity() {
                 startService(i)
                 isRunning = false
                 b.orb.animate().cancel()
-                b.orb.scaleX = 1f
-                b.orb.scaleY = 1f
+                b.orb.scaleX = 1f; b.orb.scaleY = 1f
                 JarvisLogger.log("Stopped")
             }
         }
@@ -98,28 +92,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showSettingsDialog() {
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 30, 50, 10) }
+        val etGroq = EditText(this).apply { hint = "Groq API Key (gsk_...)"; inputType = InputType.TYPE_CLASS_TEXT; setText(Prefs.getGroqKey(this@MainActivity)); setSingleLine() }
+        layout.addView(etGroq)
+        val etGemini = EditText(this).apply { hint = "Gemini API Key (AIzaSy...)"; inputType = InputType.TYPE_CLASS_TEXT; setText(Prefs.getGeminiKey(this@MainActivity)); setSingleLine(); setPadding(0, 30, 0, 0) }
+        layout.addView(etGemini)
+
+        AlertDialog.Builder(this)
+            .setTitle("JARVIS Settings")
+            .setMessage("Paste your keys. If empty, app uses built-in keys.\n\nFeatures: App Control, Calls, SMS, Camera, Data/Hotspot.")
+            .setView(layout)
+            .setPositiveButton("Save") { _, _ ->
+                Prefs.setGroqKey(this, etGroq.text.toString().trim())
+                Prefs.setGeminiKey(this, etGemini.text.toString().trim())
+                JarvisLogger.log("API Keys saved!")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun startPulse() {
-        val pulse = ObjectAnimator.ofPropertyValuesHolder(
-            b.orb,
+        val pulse = ObjectAnimator.ofPropertyValuesHolder(b.orb,
             PropertyValuesHolder.ofFloat("scaleX", 1.05f, 0.95f),
-            PropertyValuesHolder.ofFloat("scaleY", 1.05f, 0.95f)
-        )
-        pulse.duration = 1000
-        pulse.repeatCount = ObjectAnimator.INFINITE
-        pulse.repeatMode = ObjectAnimator.REVERSE
-        pulse.start()
+            PropertyValuesHolder.ofFloat("scaleY", 1.05f, 0.95f))
+        pulse.duration = 1000; pulse.repeatCount = ObjectAnimator.INFINITE; pulse.repeatMode = ObjectAnimator.REVERSE; pulse.start()
     }
 
     private fun requestPerms() {
-        val perms = mutableListOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.CAMERA
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            perms += Manifest.permission.POST_NOTIFICATIONS
+        val perms = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS, Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) perms += Manifest.permission.POST_NOTIFICATIONS
         ActivityCompat.requestPermissions(this, perms.toTypedArray(), 100)
     }
 }

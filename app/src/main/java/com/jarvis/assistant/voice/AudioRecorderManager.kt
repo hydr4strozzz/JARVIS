@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
 
 class AudioRecorderManager(private val ctx: Context, private val onTextResult: (String) -> Unit) {
     private var isRecording = false
+    private var isMuted = false // Prevents feedback loop while TTS speaks
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sampleRate = 16000
@@ -37,7 +38,7 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
             val buffer = ShortArray(bufferSize)
             while (isRecording) {
                 val read = audioRecord.read(buffer, 0, bufferSize)
-                if (read > 0) {
+                if (read > 0 && !isMuted) {
                     val tempFile = File.createTempFile("audio", ".wav", ctx.cacheDir)
                     writeWavFile(tempFile, buffer, read)
                     val text = transcribe(tempFile)
@@ -50,6 +51,9 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
             audioRecord.stop(); audioRecord.release()
         }
     }
+
+    fun muteMic() { isMuted = true }
+    fun unmuteMic() { isMuted = false }
 
     private fun transcribe(file: File): String? {
         try {
