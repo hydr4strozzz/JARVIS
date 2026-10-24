@@ -42,7 +42,7 @@ class JarvisForegroundService : Service() {
     }
 
     private fun startForegroundInternal() {
-        updateNotification("Listening...")
+        updateNotification("Listening... say 'Hey Jarvis'")
         JarvisLogger.log("Started. Say 'Hey Jarvis'")
         recorder.start()
     }
@@ -60,11 +60,11 @@ class JarvisForegroundService : Service() {
         JarvisLogger.log("Heard: $text")
 
         if (!armed) {
-            if (clean.contains("jarvis")) {
+            if (clean.contains("jarvis") || clean.contains("jervis")) {
                 armed = true
-                recorder.muteMic() // Mute mic so it doesn't hear "Ah huh"
+                recorder.muteMic()
                 tts.speak("Ah huh")
-                scope.launch { delay(1500); recorder.unmuteMic(); JarvisLogger.log("Awaiting command...") }
+                scope.launch { delay(1200); recorder.unmuteMic(); JarvisLogger.log("Awaiting command...") }
             }
             return
         }
@@ -80,7 +80,7 @@ class JarvisForegroundService : Service() {
                 if (reply.speak.isNotBlank()) {
                     tts.speak(reply.speak)
                     JarvisLogger.log("Reply: ${reply.speak}")
-                    delay(2000) // Wait for TTS to finish
+                    delay(1500) // Wait for TTS to finish
                 }
             } catch (e: Exception) {
                 tts.speak("Error.")
