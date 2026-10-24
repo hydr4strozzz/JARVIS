@@ -10,8 +10,8 @@ import java.util.concurrent.TimeUnit
 
 object GroqClient {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
     private const val SYSTEM_PROMPT = """
@@ -37,17 +37,22 @@ Actions and params:
 - "recents" {}
 - "read_screen" {}
 - "flashlight" {"on":true|false}
-- "open_camera"  {}
-- "toggle_data"  {}
+- "open_camera" {}
+- "toggle_data" {}
 - "toggle_hotspot" {}
 - "none" null
+
+Rules:
+- If user asks a question → action "none", just answer in "speak".
+- If user asks to do something on the phone → pick the correct action.
+- For "data on/off" use "toggle_data". For "hotspot on/off" use "toggle_hotspot".
 """
 
     fun ask(userText: String): String {
         val body = JSONObject().apply {
-            put("model", "llama-3.3-70b-versatile")
-            put("temperature", 0.4)
-            put("max_tokens", 300)
+            put("model", "llama-3.1-8b-instant") // ULTRA FAST MODEL
+            put("temperature", 0.3)
+            put("max_tokens", 200)
             put("response_format", JSONObject().put("type", "json_object"))
             put("messages", JSONArray().apply {
                 put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))

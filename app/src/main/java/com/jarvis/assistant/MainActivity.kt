@@ -1,6 +1,8 @@
 package com.jarvis.assistant
 
 import android.Manifest
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -14,6 +16,7 @@ import com.jarvis.assistant.databinding.ActivityMainBinding
 class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
+    private var isRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,18 +32,38 @@ class MainActivity : AppCompatActivity() {
             i.data = Uri.parse("package:$packageName")
             startActivity(i)
         }
-        b.btnStart.setOnClickListener {
+
+        b.orb.setOnClickListener {
             val i = Intent(this, JarvisForegroundService::class.java)
-                .setAction(JarvisForegroundService.ACTION_START)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                startForegroundService(i) else startService(i)
-            b.status.text = "JARVIS running"
+            if (!isRunning) {
+                i.action = JarvisForegroundService.ACTION_START
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    startForegroundService(i) else startService(i)
+                b.status.text = "Listening... say 'Hey Jarvis'"
+                isRunning = true
+                startPulse()
+            } else {
+                i.action = JarvisForegroundService.ACTION_STOP
+                startService(i)
+                b.status.text = "Tap orb to start"
+                isRunning = false
+                b.orb.animate().cancel()
+                b.orb.scaleX = 1f
+                b.orb.scaleY = 1f
+            }
         }
-        b.btnStop.setOnClickListener {
-            startService(Intent(this, JarvisForegroundService::class.java)
-                .setAction(JarvisForegroundService.ACTION_STOP))
-            b.status.text = "Stopped"
-        }
+    }
+
+    private fun startPulse() {
+        val pulse = ObjectAnimator.ofPropertyValuesHolder(
+            b.orb,
+            PropertyValuesHolder.ofFloat("scaleX", 1.05f, 0.95f),
+            PropertyValuesHolder.ofFloat("scaleY", 1.05f, 0.95f)
+        )
+        pulse.duration = 1000
+        pulse.repeatCount = ObjectAnimator.INFINITE
+        pulse.repeatMode = ObjectAnimator.REVERSE
+        pulse.start()
     }
 
     private fun requestPerms() {
@@ -48,7 +71,8 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.CALL_PHONE,
             Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_CONTACTS
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.CAMERA
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             perms += Manifest.permission.POST_NOTIFICATIONS

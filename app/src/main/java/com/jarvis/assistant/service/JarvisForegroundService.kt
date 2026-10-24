@@ -31,7 +31,10 @@ class JarvisForegroundService : Service() {
         executor = ActionExecutor(this)
         speech = SpeechRecognizerManager(this,
             onResult = ::onSpeechResult,
-            onError = { restartLater() })
+            onError = { err -> 
+                if (err == 7 || err == 6) restartListening(500)
+                else restartListening(1500)
+            })
         acquireWakeLock()
     }
 
@@ -69,13 +72,14 @@ class JarvisForegroundService : Service() {
         val clean = text.trim().lowercase()
         if (busy) return
 
+        updateNotification("Heard: $text")
+
         if (!armed) {
-            // "hey jarvis" or "jarvis" wake word
             if (clean.contains("jarvis")) {
                 armed = true
                 tts.speak("Yes?")
                 updateNotification("Listening for command...")
-                restartListening(afterMs = 500)
+                restartListening(afterMs = 1000)
             } else {
                 restartListening(afterMs = 300)
             }
@@ -90,13 +94,17 @@ class JarvisForegroundService : Service() {
                 val reply = withContext(Dispatchers.IO) {
                     router.handle(text)
                 }
+                
+                // ACTION FIRST (INSTANT EXECUTION)
+                reply.action?.let { executor.execute(it, reply.params) }
+                
+                // THEN SPEAK
                 if (reply.speak.isNotBlank()) {
                     updateNotification("Speaking: ${reply.speak}")
                     tts.speak(reply.speak)
                 }
-                reply.action?.let { executor.execute(it, reply.params) }
             } catch (e: Exception) {
-                tts.speak("Something went wrong.")
+                tts.speak("Error.")
             } finally {
                 busy = false
                 restartListening(afterMs = 1000)
@@ -109,10 +117,6 @@ class JarvisForegroundService : Service() {
             delay(afterMs)
             if (!busy) speech.start()
         }
-    }
-
-    private fun restartLater() {
-        scope.launch { delay(1000); if (!busy) speech.start() }
     }
 
     private fun acquireWakeLock() {

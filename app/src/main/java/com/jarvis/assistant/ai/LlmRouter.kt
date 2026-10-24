@@ -4,12 +4,13 @@ import android.util.Log
 
 class LlmRouter {
     fun handle(userText: String): LlmReply {
+        // GROQ FIRST FOR INSTANT SPEED, GEMINI AS FALLBACK
         val raw = try {
-            GeminiClient.ask(userText)
+            GroqClient.ask(userText)
         } catch (e: Exception) {
-            Log.w("Jarvis", "Gemini failed: ${e.message}")
-            try { GroqClient.ask(userText) } catch (e2: Exception) {
-                return LlmReply("I could not reach the server.", null, null)
+            Log.w("Jarvis", "Groq failed: ${e.message}, falling back to Gemini")
+            try { GeminiClient.ask(userText) } catch (e2: Exception) {
+                return LlmReply("Network error.", null, null)
             }
         }
         return ActionParser.parse(raw)
