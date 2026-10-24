@@ -11,7 +11,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object GroqClient {
-    private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
 
     private const val SYSTEM_PROMPT = """
 You are JARVIS, a highly capable Android AI assistant.
@@ -45,12 +45,12 @@ ACTIONS:
     fun ask(ctx: Context, userText: String): String {
         var apiKey = Prefs.getGroqKey(ctx)
         if (apiKey.isBlank()) apiKey = BuildConfig.GROQ_API_KEY
-        if (apiKey.isBlank()) throw Exception("Groq key missing")
+        if (apiKey.isBlank()) throw Exception("Groq API Key Missing in Settings!")
 
         val body = JSONObject().apply {
             put("model", "llama-3.1-8b-instant")
-            put("temperature", 0.1)
-            put("max_tokens", 200)
+            put("temperature", 0.0) // 0 for fastest, most deterministic
+            put("max_tokens", 150)  // Reduced for faster response
             put("response_format", JSONObject().put("type", "json_object"))
             put("messages", JSONArray().apply {
                 put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
@@ -64,7 +64,12 @@ ACTIONS:
         client.newCall(req).execute().use { resp ->
             val str = resp.body?.string() ?: return ""
             if (!resp.isSuccessful) throw Exception("Groq HTTP ${resp.code}")
-            return JSONObject(str).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+            
+            val rawJson = JSONObject(str).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+            
+            // Sometimes AI adds markdown despite json_object mode. Clean it.
+            val cleanJson = rawJson.substring(rawJson.indexOf("{"), rawJson.lastIndexOf("}") + 1)
+            return cleanJson
         }
     }
 }

@@ -12,8 +12,10 @@ class LlmRouter(private val ctx: Context) {
             GroqClient.ask(ctx, userText)
         } catch (e: Exception) {
             Log.w("Jarvis", "Groq failed: ${e.message}, trying Gemini")
-            try { GeminiClient.ask(ctx, userText) } catch (e2: Exception) {
-                return LlmReply("Network error.", null, null)
+            try { 
+                GeminiClient.ask(ctx, userText) 
+            } catch (e2: Exception) {
+                return LlmReply("Error: ${e.message} | ${e2.message}", null, null)
             }
         }
         return ActionParser.parse(raw)

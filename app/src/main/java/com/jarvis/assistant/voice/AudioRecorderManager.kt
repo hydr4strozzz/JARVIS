@@ -47,7 +47,7 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
             
             val buffer = ShortArray(bufferSize)
             var silenceFrames = 0
-            val maxSilenceFrames = 4 // ~0.4 seconds for instant reply
+            val maxSilenceFrames = 2 // Reduced to 0.2 seconds for INSTANT response
             var speechFrames = 0
             val audioBuffer = java.io.ByteArrayOutputStream()
 
@@ -57,7 +57,7 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                     var sum = 0.0
                     for (i in 0 until read) sum += buffer[i] * buffer[i]
                     val rms = kotlin.math.sqrt(sum / read)
-                    val isSpeech = rms > 350.0 // Background noise filter
+                    val isSpeech = rms > 250.0
 
                     if (isSpeech) {
                         speechFrames++
@@ -75,14 +75,13 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                         audioBuffer.write(byteBuffer)
                     }
 
-                    // Trigger transcription when silence is detected
                     if ((silenceFrames > maxSilenceFrames || audioBuffer.size() > sampleRate * 2 * 5) && speechFrames > 0) {
                         val pcmData = audioBuffer.toByteArray()
                         audioBuffer.reset()
                         speechFrames = 0
                         silenceFrames = 0
                         
-                        if (pcmData.size > 8000) { // Min size check
+                        if (pcmData.size > 4000) { 
                             val tempFile = File.createTempFile("audio", ".wav", ctx.cacheDir)
                             writeProperWavFile(tempFile, pcmData)
                             
@@ -112,12 +111,15 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
         try {
             var apiKey = Prefs.getGroqKey(ctx)
             if (apiKey.isBlank()) apiKey = BuildConfig.GROQ_API_KEY
-            if (apiKey.isBlank()) return null
+            if (apiKey.isBlank()) {
+                withContext(Dispatchers.Main) { JarvisLogger.log("ERROR: API Key missing in Settings!") }
+                return null
+            }
             
             val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).build()
             val body = MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("file", "audio.wav", file.asRequestBody("audio/wav".toMediaType()))
-                .addFormDataPart("model", "whisper-large-v3-turbo") // ULTRA FAST MODEL
+                .addFormDataPart("model", "whisper-large-v3-turbo")
                 .addFormDataPart("prompt", "Jarvis, Malayalam, English, Manglish")
                 .build()
                 
@@ -127,14 +129,14 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
             client.newCall(request).execute().use { response ->
                 val resStr = response.body?.string() ?: return null
                 if (!response.isSuccessful) {
-                    withContext(Dispatchers.Main) { JarvisLogger.log("Whisper Err: ${response.code}") }
+                    withContext(Dispatchers.Main) { JarvisLogger.log("Voice API Err: ${response.code}") }
                     return null
                 }
                 val json = JSONObject(resStr)
                 return if (json.has("text")) json.getString("text").trim() else null
             }
         } catch (e: Exception) { 
-            withContext(Dispatchers.Main) { JarvisLogger.log("Whisper Ex: ${e.message}") }
+            withContext(Dispatchers.Main) { JarvisLogger.log("Voice Ex: ${e.message}") }
             return null 
         }
     }
