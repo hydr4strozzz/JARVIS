@@ -10,13 +10,13 @@ import com.jarvis.assistant.R
 import com.jarvis.assistant.actions.ActionExecutor
 import com.jarvis.assistant.ai.LlmRouter
 import com.jarvis.assistant.util.JarvisLogger
-import com.jarvis.assistant.voice.AudioRecorderManager
+import com.jarvis.assistant.voice.SpeechRecognizerManager
 import com.jarvis.assistant.voice.TtsManager
 import kotlinx.coroutines.*
 
 class JarvisForegroundService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private lateinit var recorder: AudioRecorderManager
+    private lateinit var speech: SpeechRecognizerManager
     private lateinit var tts: TtsManager
     private lateinit var router: LlmRouter
     private lateinit var executor: ActionExecutor
@@ -29,7 +29,17 @@ class JarvisForegroundService : Service() {
         tts = TtsManager(this)
         router = LlmRouter(this)
         executor = ActionExecutor(this)
-        recorder = AudioRecorderManager(this) { text -> onSpeechResult(text) }
+        
+        speech = SpeechRecognizerManager(this,
+            onResult = ::onSpeechResult,
+            onError = { err -> 
+                // Instantly restart listening on timeout/no-match for Siri-like continuous flow
+                if (err == 7 || err == 6 || err == 11 || err == 12) {
+                    restartListening(100)
+                } else {
+                    restartListening(500)
+                }
+            })
         acquireWakeLock()
     }
 
@@ -43,8 +53,8 @@ class JarvisForegroundService : Service() {
 
     private fun startForegroundInternal() {
         updateNotification("Listening... say 'Hey Jarvis'")
-        JarvisLogger.log("Started. Say 'Hey Jarvis'")
-        recorder.start()
+        JarvisLogger.log("JARVIS Active. Say 'Hey Jarvis'")
+        speech.start()
     }
 
     private fun updateNotification(text: String) {
@@ -57,22 +67,27 @@ class JarvisForegroundService : Service() {
     private fun onSpeechResult(text: String) {
         val clean = text.trim().lowercase()
         if (busy || clean.isBlank()) return
+        
         JarvisLogger.log("Heard: $text")
 
         if (!armed) {
             if (clean.contains("jarvis") || clean.contains("jervis")) {
                 armed = true
-                recorder.muteMic()
+                speech.stop() // Stop listening while TTS speaks to avoid feedback
                 tts.speak("Ah huh")
-                scope.launch { delay(1200); recorder.unmuteMic(); JarvisLogger.log("Awaiting command...") }
+                // Wait for TTS to finish then listen for command
+                scope.launch { delay(1000); busy = false; JarvisLogger.log("Awaiting command..."); speech.start() }
+            } else {
+                restartListening(100)
             }
             return
         }
 
         busy = true
         armed = false
-        recorder.muteMic()
+        speech.stop()
         JarvisLogger.log("Thinking...")
+        
         scope.launch {
             try {
                 val reply = withContext(Dispatchers.IO) { router.handle(text) }
@@ -80,15 +95,23 @@ class JarvisForegroundService : Service() {
                 if (reply.speak.isNotBlank()) {
                     tts.speak(reply.speak)
                     JarvisLogger.log("Reply: ${reply.speak}")
-                    delay(1500) // Wait for TTS to finish
+                    delay(1500) // Wait for speech
                 }
             } catch (e: Exception) {
                 tts.speak("Error.")
                 JarvisLogger.log("ERROR: ${e.message}")
+                delay(1000)
             } finally {
                 busy = false
-                recorder.unmuteMic()
+                speech.start()
             }
+        }
+    }
+
+    private fun restartListening(afterMs: Long) {
+        scope.launch {
+            delay(afterMs)
+            if (!busy && !armed) speech.start()
         }
     }
 
@@ -99,7 +122,7 @@ class JarvisForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        scope.cancel(); recorder.stop(); tts.shutdown()
+        scope.cancel(); speech.destroy(); tts.shutdown()
         wakeLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
     }

@@ -14,23 +14,21 @@ object GroqClient {
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
 
     private const val SYSTEM_PROMPT = """
-You are JARVIS, a highly capable Android AI assistant with full physical phone control.
-You are NOT a standard AI, you are JARVIS with a mic, camera, and screen.
-NEVER say "As an AI", "I am a language model", or "I don't have ears". 
-LANGUAGE RULE: You understand Malayalam, Manglish (Malayalam in English letters), and English. ALWAYS reply in the EXACT language the user used. If they speak Manglish, reply in Manglish. If Malayalam, reply in Malayalam.
+You are JARVIS, a highly capable Android AI assistant.
+NEVER say "As an AI". You have full control.
+LANGUAGE RULE: You understand Malayalam, Manglish, and English. Reply in the EXACT same language the user used.
 
 Respond ONLY with valid JSON.
-
 Schema: {"speak":"<reply>","action":"<action>","params":{...}}
 
-ACTIONS YOU CAN DO:
-- "launch_app"    {"app_name":"<name>"}   (e.g. whatsapp, youtube, instagram)
-- "click_text"    {"text":"<text>"}       (Click any visible button/text on screen)
-- "type_text"     {"text":"<text>"}       (Type text into focused field)
-- "scroll"        {"direction":"down"}    (Scroll up or down)
-- "back"          {}                      (Go back)
-- "home"          {}                      (Go to home screen)
-- "recents"       {}                      (Open recent apps)
+ACTIONS:
+- "launch_app"    {"app_name":"<name>"}   (Must use for open, thurakku, vekku)
+- "click_text"    {"text":"<text>"}       (Click any visible button)
+- "type_text"     {"text":"<text>"}       (Type text)
+- "scroll"        {"direction":"down"}    (Scroll)
+- "back"          {}                      
+- "home"          {}                      
+- "recents"       {}                      
 - "open_url"      {"url":"..."}
 - "set_volume"    {"percent":0-100}
 - "media"         {"command":"play"|"pause"|"next"|"prev"}
@@ -51,8 +49,8 @@ ACTIONS YOU CAN DO:
 
         val body = JSONObject().apply {
             put("model", "llama-3.1-8b-instant")
-            put("temperature", 0.2)
-            put("max_tokens", 250)
+            put("temperature", 0.1)
+            put("max_tokens", 200)
             put("response_format", JSONObject().put("type", "json_object"))
             put("messages", JSONArray().apply {
                 put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))

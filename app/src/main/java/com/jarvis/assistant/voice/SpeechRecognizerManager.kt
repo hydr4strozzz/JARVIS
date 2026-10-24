@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import com.jarvis.assistant.util.JarvisLogger
+import kotlinx.coroutines.*
 
 class SpeechRecognizerManager(
     private val ctx: Context,
@@ -22,37 +24,47 @@ class SpeechRecognizerManager(
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onError(error: Int) {
-            if (running) {
-                running = false
-                onError(error)
-            }
+            if (running) onError(error)
         }
         override fun onResults(results: Bundle?) {
-            val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull() ?: ""
-            if (running) {
-                running = false
-                if (text.isNotBlank()) onResult(text) else onError(0)
-            }
+            val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
+            if (running && text.isNotBlank()) onResult(text)
         }
-        override fun onPartialResults(partialResults: Bundle?) {}
+        override fun onPartialResults(partialResults: Bundle?) {
+            val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
+            if (text.isNotBlank()) JarvisLogger.log("Listening: $text")
+        }
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
     fun start() {
         if (running) return
         running = true
-        // Android mic bugs ozhivakkan recognizer recreate cheyyunnu
-        recognizer?.destroy()
-        recognizer = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
-            setRecognitionListener(listener)
+        
+        if (recognizer == null) {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
+                setRecognitionListener(listener)
+            }
         }
+        
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "auto")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN") // Handles English, Manglish perfectly
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
         }
-        recognizer?.startListening(intent)
+        
+        try {
+            recognizer?.startListening(intent)
+        } catch (e: Exception) {
+            running = false
+            onError(-1)
+        }
+    }
+
+    fun stop() {
+        running = false
+        recognizer?.stopListening()
     }
 
     fun destroy() {
