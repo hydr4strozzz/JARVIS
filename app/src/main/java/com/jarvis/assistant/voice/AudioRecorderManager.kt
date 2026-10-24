@@ -32,18 +32,27 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
         job = scope.launch {
             val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize)
             if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
-                JarvisLogger.log("Mic init failed")
+                withContext(Dispatchers.Main) { JarvisLogger.log("ERROR: Mic init failed! Check Permissions.") }
                 isRecording = false
                 return@launch
             }
-            audioRecord.startRecording()
+            
+            try {
+                audioRecord.startRecording()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { JarvisLogger.log("ERROR: Mic start fail: ${e.message}") }
+                isRecording = false
+                return@launch
+            }
+            
+            withContext(Dispatchers.Main) { JarvisLogger.log("Mic active. Speak now...") }
             val buffer = ShortArray(bufferSize)
             
             var silenceFrames = 0
-            val maxSilenceFrames = 10 // ~1.6 seconds of silence ends the recording
-            val minSpeechFrames = 2
+            val maxSilenceFrames = 5 // ~0.8 seconds
             var speechFrames = 0
             val audioBuffer = java.io.ByteArrayOutputStream()
+            var debugCounter = 0
 
             while (isRecording) {
                 val read = audioRecord.read(buffer, 0, bufferSize)
@@ -52,7 +61,13 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                     for (i in 0 until read) sum += buffer[i] * buffer[i]
                     val rms = kotlin.math.sqrt(sum / read)
                     
-                    val isSpeech = rms > 800.0 // Voice threshold
+                    // Threshold lowered to 150 for normal mic
+                    val isSpeech = rms > 150.0 
+
+                    if (debugCounter % 20 == 0) {
+                        withContext(Dispatchers.Main) { JarvisLogger.log("Mic Level: ${rms.toInt()}") }
+                    }
+                    debugCounter++
 
                     if (isSpeech) {
                         speechFrames++
@@ -71,7 +86,7 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                     }
 
                     // Trigger transcription when silence is detected or max length reached
-                    if ((silenceFrames > maxSilenceFrames || audioBuffer.size() > sampleRate * 2 * 8) && speechFrames > minSpeechFrames) {
+                    if ((silenceFrames > maxSilenceFrames || audioBuffer.size() > sampleRate * 2 * 6) && speechFrames > 0) {
                         val pcmData = audioBuffer.toByteArray()
                         audioBuffer.reset()
                         speechFrames = 0
@@ -80,12 +95,13 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                         val tempFile = File.createTempFile("audio", ".wav", ctx.cacheDir)
                         writeWavFileWithData(tempFile, pcmData)
                         
-                        withContext(Dispatchers.IO) {
-                            val text = transcribe(tempFile)
-                            tempFile.delete()
-                            if (!text.isNullOrBlank() && text.length > 2) {
-                                JarvisLogger.log("Whisper: $text")
-                                withContext(Dispatchers.Main) { onTextResult(text) }
+                        withContext(Dispatchers.Main) { JarvisLogger.log("Transcribing...") }
+                        val text = transcribe(tempFile)
+                        tempFile.delete()
+                        
+                        if (!text.isNullOrBlank()) {
+                            withContext(Dispatchers.Main) { 
+                                onTextResult(text) 
                             }
                         }
                     } else if (silenceFrames > maxSilenceFrames) {
@@ -103,12 +119,15 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
     fun muteMic() { isMuted = true }
     fun unmuteMic() { isMuted = false }
 
-    private fun transcribe(file: File): String? {
+    private suspend fun transcribe(file: File): String? {
         try {
             var apiKey = Prefs.getGroqKey(ctx)
             if (apiKey.isBlank()) apiKey = BuildConfig.GROQ_API_KEY
-            if (apiKey.isBlank()) return null
-            val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).build()
+            if (apiKey.isBlank()) {
+                withContext(Dispatchers.Main) { JarvisLogger.log("ERROR: Groq Key missing!") }
+                return null
+            }
+            val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).build()
             val body = MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("file", "audio.wav", file.asRequestBody("audio/wav".toMediaType()))
                 .addFormDataPart("model", "whisper-large-v3").build()
@@ -116,10 +135,17 @@ class AudioRecorderManager(private val ctx: Context, private val onTextResult: (
                 .header("Authorization", "Bearer $apiKey").post(body).build()
             client.newCall(request).execute().use { response ->
                 val resStr = response.body?.string() ?: return null
+                if (!response.isSuccessful) {
+                    withContext(Dispatchers.Main) { JarvisLogger.log("Whisper Err: ${response.code}") }
+                    return null
+                }
                 val json = JSONObject(resStr)
                 return if (json.has("text")) json.getString("text").trim() else null
             }
-        } catch (e: Exception) { return null }
+        } catch (e: Exception) { 
+            withContext(Dispatchers.Main) { JarvisLogger.log("Whisper Ex: ${e.message}") }
+            return null 
+        }
     }
 
     private fun writeWavFileWithData(file: File, pcmData: ByteArray) {
